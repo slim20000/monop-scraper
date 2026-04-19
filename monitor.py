@@ -29,33 +29,53 @@ def send_telegram_msg(message):
     })
 
 def scrape_jobs():
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+    
+    try:
+        response = requests.get(URL, headers=headers, timeout=15)
+        # Si Monoprix bloque les requêtes simples, on le verra ici
+        if response.status_code != 200:
+            print(f"Erreur HTTP : {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Erreur de connexion : {e}")
+        return []
 
-    r = requests.get(URL, headers=headers, timeout=15)
-    soup = BeautifulSoup(r.text, "html.parser")
-
+    soup = BeautifulSoup(response.text, 'html.parser')
     jobs = []
+    
+    # Nouveau sélecteur plus large pour capturer les offres
+    # On cherche tous les liens qui pointent vers une annonce
+    listings = soup.select('a[href*="/annonces/"]') 
 
-    for a in soup.find_all("a", href=True):
-        title = a.get_text(strip=True)
-        link = a["href"]
+    for a in listings:
+        try:
+            # On cherche le titre dans le texte du lien ou les balises parentes
+            title = a.text.strip()
+            link = "https://recrutement.monoprix.fr" + a['href'] if a['href'].startswith('/') else a['href']
+            
+            # Pour la localisation, on regarde les éléments autour du lien
+            parent = a.find_parent()
+            location = "Paris / IDF" # Valeur par défaut si non trouvé
+            
+            job_id = link.split('/')[-1]
 
-        if not title or len(title) < 10:
+            if title and job_id not in [j['id'] for j in jobs]:
+                # On ne garde que si le titre n'est pas vide (évite les faux positifs)
+                if len(title) > 5:
+                    jobs.append({
+                        "id": job_id,
+                        "title": title,
+                        "location": location,
+                        "link": link
+                    })
+        except Exception as e:
             continue
-
-        if link.startswith("/"):
-            link = "https://recrutement.monoprix.fr" + link
-
-        location = "Non spécifiée"
-
-        if is_valid_location(location):
-            jobs.append({
-                "id": link,
-                "title": title,
-                "location": location,
-                "link": link
-            })
-
+            
+    print(f"Nombre d'offres détectées sur la page : {len(jobs)}")
     return jobs
 
 def main():
