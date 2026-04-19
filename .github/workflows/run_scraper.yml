@@ -30,6 +30,11 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add seen_jobs.json
-          git commit -m "Update seen jobs" || exit 0
-          git push
+          # On vérifie si le fichier existe avant de faire le "add"
+          if [ -f seen_jobs.json ]; then
+            git add seen_jobs.json
+            git commit -m "Update seen jobs" || echo "No changes to commit"
+            git push
+          else
+            echo "Le fichier seen_jobs.json n'existe pas encore, rien à commit."
+          fi
