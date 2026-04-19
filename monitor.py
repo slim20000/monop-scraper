@@ -59,6 +59,7 @@ def scrape_jobs():
     return jobs
 
 def main():
+    send_telegram_msg("Test de connexion : Le script s'est lancé !")
     seen = []
 
     if os.path.exists(DB_FILE):
