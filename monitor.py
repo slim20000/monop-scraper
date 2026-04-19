@@ -2,10 +2,9 @@ import requests
 import json
 import os
 
-# --- CONFIGURATION ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-# L'URL magique (l'API directe de leur système de recrutement)
+# URL de l'API Monoprix
 API_URL = "https://recrutement.monoprix.fr/api/annonces?workingTimes=2"
 DB_FILE = "seen_jobs.json"
 
@@ -15,7 +14,7 @@ def send_telegram_msg(message):
     requests.post(url, json=payload)
 
 def main():
-    # 1. Charger l'historique
+    # Chargement de la mémoire
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r") as f:
             try:
@@ -25,27 +24,42 @@ def main():
     else:
         seen_ids = []
 
-    # 2. Appeler l'API
     headers = {"User-Agent": "Mozilla/5.0"}
+    
     try:
         response = requests.get(API_URL, headers=headers)
-        data = response.json() # On récupère directement du JSON
-        # La structure de leur API met les offres dans une liste 'items' ou 'data'
-        # On s'adapte à leur format standard
-        offers = data.get('data', []) 
+        data = response.json()
+        
+        # --- DEBUG : On affiche les clés reçues pour comprendre la structure ---
+        print(f"Clés reçues de l'API : {data.keys()}")
+        
+        # Tentative de trouver la liste des offres dans différentes clés possibles
+        # Monoprix peut utiliser 'data', 'items', 'annonces' ou être une liste directe
+        offers = []
+        if isinstance(data, list):
+            offers = data
+        elif 'data' in data:
+            offers = data['data']
+        elif 'items' in data:
+            offers = data['items']
+        elif 'annonces' in data:
+            offers = data['annonces']
+            
+        print(f"Nombre d'offres trouvées : {len(offers)}")
+
     except Exception as e:
-        print(f"Erreur API: {e}")
+        print(f"Erreur lors de l'appel API : {e}")
         return
 
     new_jobs = []
     for job in offers:
-        job_id = str(job.get('id'))
-        if job_id not in seen_ids:
-            # Extraction des infos
-            title = job.get('title', 'Poste sans titre')
-            city = job.get('city', 'France')
-            # Construction du lien direct vers l'annonce
-            slug = job.get('slug', '')
+        # On récupère l'ID (peut être sous 'id' ou 'reference')
+        job_id = str(job.get('id') or job.get('reference'))
+        
+        if job_id and job_id not in seen_ids:
+            title = job.get('title') or job.get('libelle') or "Poste"
+            city = job.get('city') or job.get('ville') or "IDF"
+            slug = job.get('slug') or job_id
             link = f"https://recrutement.monoprix.fr/fr/annonces/{slug}"
             
             new_jobs.append({
@@ -53,17 +67,16 @@ def main():
                 "msg": f"📌 *{title}*\n📍 {city}\n🔗 [Voir l'offre]({link})"
             })
 
-    # 3. Envoyer et Sauvegarder
     if new_jobs:
         for job in new_jobs:
-            send_telegram_msg(f"🚀 *Nouvelle offre Temps Partiel !*\n\n{job['msg']}")
+            send_telegram_msg(f"🚀 *Nouvelle offre Monoprix !*\n\n{job['msg']}")
             seen_ids.append(job['id'])
         
         with open(DB_FILE, "w") as f:
             json.dump(seen_ids, f)
-        print(f"{len(new_jobs)} offres envoyées.")
+        print(f"Succès : {len(new_jobs)} messages envoyés.")
     else:
-        print("Aucune nouvelle offre sur l'API.")
+        print("Fin du script : Aucune nouvelle offre à traiter.")
 
 if __name__ == "__main__":
     main()
